@@ -71,6 +71,7 @@ Dates use `YYYY-MM-DD`; types are `income` or `expense`. Income uses the `Income
 - `templates/`, `static/`: responsive user interface.
 - `tests/test_app.py`: functional automated tests.
 - `docs/PROJECT_SPEC.md`: vision, persona, scenarios, stories, architecture, and demo plan.
+- `docs/Budget_Compass_Project_Report.pdf`: report draft with verified local results and clearly marked deployment fields. Regenerate it with `python docs/create_report.py docs/Budget_Compass_Project_Report.pdf` after installing `reportlab` if the live links are added to the script.
 - `Dockerfile`, `render.yaml`: container and cloud configuration.
 
 ## Configuration and endpoints
