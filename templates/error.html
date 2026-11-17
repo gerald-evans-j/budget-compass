@@ -1,0 +1,3 @@
+{% extends "base.html" %}
+{% block title %}Something went wrong · Budget Compass{% endblock %}
+{% block content %}<section class="auth-panel panel"><h1>Couldn’t complete that request</h1><p>{{ message }}</p><a class="button" href="{{ url_for('home') }}">Go home</a></section>{% endblock %}

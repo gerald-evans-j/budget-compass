@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Create account' if mode == 'register' else 'Sign in' }} · Budget Compass{% endblock %}
+{% block content %}
+<section class="auth-panel panel">
+  <p class="eyebrow">{{ 'GET STARTED' if mode == 'register' else 'WELCOME BACK' }}</p>
+  <h1>{{ 'Create your account' if mode == 'register' else 'Sign in' }}</h1>
+  <p class="muted">Your entries stay in your own account.</p>
+  <form method="post" class="stacked-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="email">Email address</label>
+    <input id="email" name="email" type="email" autocomplete="email" maxlength="254" required autofocus>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="{{ 'new-password' if mode == 'register' else 'current-password' }}" {% if mode == 'register' %}minlength="10" maxlength="128"{% endif %} required>
+    {% if mode == 'register' %}<p class="hint">Use at least 10 characters.</p>{% endif %}
+    <button class="button" type="submit">{{ 'Create account' if mode == 'register' else 'Sign in' }}</button>
+  </form>
+  <p class="auth-switch">{% if mode == 'register' %}Already registered? <a href="{{ url_for('login') }}">Sign in</a>{% else %}New here? <a href="{{ url_for('register') }}">Create an account</a>{% endif %}</p>
+</section>
+{% endblock %}

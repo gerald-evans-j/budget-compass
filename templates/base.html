@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#aa2935">
+  <title>{% block title %}Budget Compass{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script defer src="{{ url_for('static', filename='app.js') }}"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="{{ url_for('home') }}"><span class="brand-mark">◈</span> Budget Compass</a>
+      <nav aria-label="Main navigation">
+        {% if current_user %}
+          <a href="{{ url_for('dashboard') }}">Dashboard</a>
+          <form class="inline" action="{{ url_for('logout') }}" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="nav-button" type="submit">Sign out</button>
+          </form>
+        {% else %}
+          <a href="{{ url_for('login') }}">Sign in</a>
+          <a class="nav-register" href="{{ url_for('register') }}">Get started</a>
+        {% endif %}
+      </nav>
+    </div>
+  </header>
+  <main id="main" class="wrap">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="messages" role="status" aria-live="polite">
+          {% for kind, message in messages %}
+            <p class="message {{ kind }}">{{ message }}</p>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="site-footer"><div class="wrap">Budget Compass · A student software engineering project</div></footer>
+</body>
+</html>
