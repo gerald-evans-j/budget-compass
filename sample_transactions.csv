@@ -2,3 +2,15 @@ date,type,name,category,amount
 2026-09-02,income,Campus job,Income,200.00
 2026-09-03,expense,Lunch,Food,12.50
 2026-09-04,expense,Bus fare,Transportation,3.00
+2026-09-12,expense,Lab notebook,School,18.75
+2026-09-18,income,Campus job,Income,210.00
+2026-09-24,expense,Groceries,Food,62.40
+2026-10-01,expense,Rent,Housing,450.00
+2026-10-02,income,Campus paycheck,Income,975.00
+2026-10-03,expense,Transit pass,Transportation,35.00
+2026-10-06,expense,Groceries,Food,86.43
+2026-10-09,expense,Course materials,School,72.50
+2026-10-14,income,Tutoring,Income,180.00
+2026-10-16,expense,Pharmacy,Health,18.00
+2026-10-20,expense,Movie and snacks,Entertainment,27.60
+2026-10-23,income,Textbook resale,Income,95.00

@@ -9,6 +9,8 @@ import secrets
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from functools import wraps
+from operator import attrgetter
+from pathlib import Path
 
 from flask import (
     Flask, abort, flash, g, jsonify, redirect, render_template, request,
@@ -24,6 +26,12 @@ db = SQLAlchemy()
 EXPENSE_CATEGORIES = ("Food", "Housing", "Transportation", "School", "Entertainment", "Health", "Other")
 CSV_FIELDS = ("date", "type", "name", "category", "amount")
 MAX_IMPORT_ROWS = 500
+TRANSACTION_SORT_ORDERS = {
+    "newest": ("occurred_on", True),
+    "oldest": ("occurred_on", False),
+    "high": ("amount_cents", True),
+    "low": ("amount_cents", False),
+}
 
 
 class User(db.Model):
@@ -103,6 +111,42 @@ def safe_csv_cell(value):
     return "'" + value if value.lstrip().startswith(("=", "+", "-", "@")) else value
 
 
+def transaction_csv(rows, filename):
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(CSV_FIELDS)
+    for item in rows:
+        writer.writerow([item.occurred_on.isoformat(), item.kind,
+                         safe_csv_cell(item.name), item.category,
+                         f"{Decimal(item.amount_cents) / 100:.2f}"])
+    return Response(output.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": f"attachment; filename={filename}",
+                             "Cache-Control": "no-store"})
+
+
+def sample_transactions():
+    sample_file = Path(__file__).with_name("sample_transactions.csv")
+    with sample_file.open(encoding="utf-8", newline="") as source:
+        return [Transaction(**parse_transaction(row)) for row in csv.DictReader(source)]
+
+
+def sample_month_transactions(rows, month):
+    return [item for item in rows if month is None or item.occurred_on.replace(day=1) == month]
+
+
+def summarize_transactions(rows):
+    income = sum(item.amount_cents for item in rows if item.kind == "income")
+    expenses = sum(item.amount_cents for item in rows if item.kind == "expense")
+    categories = {
+        category: sum(item.amount_cents for item in rows
+                      if item.kind == "expense" and item.category == category)
+        for category in EXPENSE_CATEGORIES
+    }
+    return {"income_cents": income, "expenses_cents": expenses,
+            "balance_cents": income - expenses,
+            "by_category_cents": {category: cents for category, cents in categories.items() if cents}}
+
+
 def login_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
@@ -157,7 +201,12 @@ def create_app(test_config=None):
 
     @app.get("/")
     def home():
-        return redirect(url_for("dashboard")) if g.user else render_template("home.html")
+        if g.user:
+            return redirect(url_for("dashboard"))
+        rows = sample_transactions()
+        month = max(item.occurred_on for item in rows).replace(day=1)
+        return render_template("home.html", sample_month=month,
+                               sample_summary=summarize_transactions(sample_month_transactions(rows, month)))
 
     @app.route("/register", methods=["GET", "POST"])
     def register():
@@ -205,40 +254,64 @@ def create_app(test_config=None):
 
     def summary_for(month):
         query = month_query(Transaction.query.filter_by(user_id=g.user.id), month)
-        rows = query.all()
-        income = sum(t.amount_cents for t in rows if t.kind == "income")
-        expenses = sum(t.amount_cents for t in rows if t.kind == "expense")
-        categories = {category: sum(t.amount_cents for t in rows
-                                    if t.kind == "expense" and t.category == category)
-                      for category in EXPENSE_CATEGORIES}
-        return {"income_cents": income, "expenses_cents": expenses,
-                "balance_cents": income - expenses,
-                "by_category_cents": {k: v for k, v in categories.items() if v}}
+        return summarize_transactions(query.all())
+
+    def dashboard_filters(default_month=""):
+        month = parse_month(request.args.get("month", default_month))
+        category = request.args.get("category", "")
+        if category and category not in EXPENSE_CATEGORIES and category != "Income":
+            abort(400)
+        sort = request.args.get("sort", "newest")
+        if sort not in TRANSACTION_SORT_ORDERS:
+            abort(400)
+        return month, category, sort
+
+    def dashboard_page(transactions, summary, month, category, sort, *, demo=False):
+        return render_template("dashboard.html", transactions=transactions, summary=summary,
+                               month=month.isoformat()[:7] if month else "",
+                               category=category, sort=sort, demo=demo,
+                               today=date.today().isoformat())
 
     @app.get("/dashboard")
     @login_required
     def dashboard():
         try:
-            month = parse_month(request.args.get("month", ""))
+            month, category, sort = dashboard_filters()
         except ValueError as exc:
             flash(str(exc), "error")
             return redirect(url_for("dashboard"))
-        category = request.args.get("category", "")
-        if category and category not in EXPENSE_CATEGORIES and category != "Income":
-            abort(400)
-        sort = request.args.get("sort", "newest")
-        if sort not in {"newest", "oldest", "high", "low"}:
-            abort(400)
         query = month_query(Transaction.query.filter_by(user_id=g.user.id), month)
         if category:
             query = query.filter_by(category=category)
-        order = {"newest": (Transaction.occurred_on.desc(), Transaction.id.desc()),
-                 "oldest": (Transaction.occurred_on.asc(), Transaction.id.asc()),
-                 "high": (Transaction.amount_cents.desc(), Transaction.id.desc()),
-                 "low": (Transaction.amount_cents.asc(), Transaction.id.asc())}[sort]
-        return render_template("dashboard.html", transactions=query.order_by(*order).all(),
-                               summary=summary_for(month), month=month.strftime("%Y-%m") if month else "",
-                               category=category, sort=sort, today=date.today().isoformat())
+        field, descending = TRANSACTION_SORT_ORDERS[sort]
+        column = getattr(Transaction, field)
+        order = (column.desc(), Transaction.id.desc()) if descending else (column.asc(), Transaction.id.asc())
+        return dashboard_page(query.order_by(*order).all(), summary_for(month), month, category, sort)
+
+    @app.get("/demo")
+    def demo():
+        rows = sample_transactions()
+        latest_month = max(item.occurred_on for item in rows).isoformat()[:7]
+        try:
+            month, category, sort = dashboard_filters(latest_month)
+        except ValueError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("demo"))
+        month_rows = sample_month_transactions(rows, month)
+        visible_rows = [item for item in month_rows if not category or item.category == category]
+        field, descending = TRANSACTION_SORT_ORDERS[sort]
+        visible_rows.sort(key=attrgetter(field), reverse=descending)
+        return dashboard_page(visible_rows, summarize_transactions(month_rows), month, category, sort, demo=True)
+
+    @app.get("/demo/export.csv")
+    def export_demo_csv():
+        try:
+            month = parse_month(request.args.get("month", ""))
+        except ValueError:
+            abort(400)
+        rows = sample_month_transactions(sample_transactions(), month)
+        rows.sort(key=attrgetter("occurred_on"))
+        return transaction_csv(rows, "budget-compass-sample.csv")
 
     @app.post("/transactions")
     @login_required
@@ -325,16 +398,7 @@ def create_app(test_config=None):
             abort(400)
         rows = month_query(Transaction.query.filter_by(user_id=g.user.id), month).order_by(
             Transaction.occurred_on, Transaction.id).all()
-        output = io.StringIO(newline="")
-        writer = csv.writer(output)
-        writer.writerow(CSV_FIELDS)
-        for item in rows:
-            writer.writerow([item.occurred_on.isoformat(), item.kind,
-                             safe_csv_cell(item.name), item.category,
-                             f"{Decimal(item.amount_cents) / 100:.2f}"])
-        return Response(output.getvalue(), mimetype="text/csv",
-                        headers={"Content-Disposition": "attachment; filename=budget-compass.csv",
-                                 "Cache-Control": "no-store"})
+        return transaction_csv(rows, "budget-compass.csv")
 
     @app.get("/api/summary")
     def summary_api():

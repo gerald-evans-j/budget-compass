@@ -116,6 +116,42 @@ class BudgetCompassTests(unittest.TestCase):
         self.assertIn(b"Know where your money goes", self.client.get("/").data)
         self.assertEqual(self.client.get("/dashboard").status_code, 302)
 
+    def test_public_demo_filters_sample_data_without_an_account(self):
+        home = self.client.get("/")
+        self.assertIn(b'href="/demo"', home.data)
+        demo = self.client.get("/demo")
+        self.assertEqual(demo.status_code, 200)
+        self.assertIn(b"$560.47", demo.data)
+        self.assertIn(b"Campus paycheck", demo.data)
+        self.assertNotIn(b"Add transaction", demo.data)
+
+        filtered = self.client.get("/demo?month=2026-09&category=Food&sort=high")
+        self.assertIn(b"Lunch", filtered.data)
+        self.assertNotIn(b"Bus fare", filtered.data)
+        self.assertNotIn(b"Campus paycheck", filtered.data)
+        sample_csv = self.client.get("/demo/export.csv?month=2026-09")
+        self.assertIn(b"budget-compass-sample.csv", sample_csv.headers["Content-Disposition"].encode())
+        self.assertIn(b"Bus fare", sample_csv.data)
+        self.assertNotIn(b"Campus paycheck", sample_csv.data)
+        with self.app.app_context():
+            self.assertEqual(db.session.execute(db.select(User)).scalars().all(), [])
+            self.assertEqual(db.session.execute(db.select(Transaction)).scalars().all(), [])
+
+    def test_sample_csv_import_stays_in_the_signed_in_account(self):
+        self.register_and_login()
+        self.add(name="Private purchase")
+        sample_csv = self.client.get("/demo/export.csv?month=2026-10").data
+        self.assertNotIn(b"Private purchase", sample_csv)
+        self.assertNotIn(b"Private purchase", self.client.get("/demo?month=").data)
+
+        response = self.client.post("/transactions/import", data={
+            "csrf_token": self.token(), "file": (io.BytesIO(sample_csv), "sample.csv")
+        }, follow_redirects=True)
+        self.assertIn(b"Imported 9 transactions", response.data)
+        totals = self.client.get("/api/summary?month=2026-10").json
+        self.assertEqual(totals["balance_cents"], 56047)
+        self.assertIn(b"Campus paycheck", self.client.get("/transactions/export.csv?month=2026-10").data)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -2,6 +2,12 @@
 
 An account-based budget tracker for students. Record income and expenses, review balances and category totals, filter and sort transactions, edit or delete entries, and import or export CSV files. Built with Flask, SQLAlchemy, SQLite for local development, and PostgreSQL for cloud deployment.
 
+## Try the demo
+
+Choose **Try the demo** on the home page to explore September and October sample budgets without an account. October starts with $1,250.00 in income, $689.53 in expenses, and a $560.47 balance. Change the month or filter by category, then choose **Download CSV** to export that month.
+
+To try the full workflow, create a test account and import the downloaded CSV. The import panel also offers a sample file containing both months. Review the totals, edit a transaction, and export the updated budget.
+
 ## Run locally
 
 Requires Python 3.12 or newer.
@@ -22,7 +28,7 @@ Visit http://127.0.0.1:5000, create an account, and add a transaction. Local dat
 python -m unittest discover -s tests -v
 ```
 
-The tests use temporary SQLite databases. They cover account login, stored password hashes, transaction creation/edit/deletion, monthly totals, filtering, CSV import/export, user isolation, input validation, CSRF checks, and health status.
+The tests use temporary SQLite databases. They cover sign-in, account isolation, transaction editing, monthly totals, filters, CSV validation and export, and the public demo's sample-only data.
 
 ## Docker
 
@@ -38,7 +44,7 @@ Open http://localhost:8000. The named volume keeps local SQLite data between con
 
 ## Deploy to Render
 
-The repository includes `render.yaml`, which describes a Docker web service and a PostgreSQL database. Create an empty dedicated GitHub repository named `budget-compass` (do not initialize it with a README), then push this project's existing commits:
+The repository includes `render.yaml`, which defines a Docker web service and a PostgreSQL database. For the first publication from the source ZIP, open the extracted `budget-compass` directory and push the included commit history to the dedicated GitHub repo.
 
 ```bash
 git remote add origin https://github.com/gerald-evans-j/budget-compass.git
@@ -47,13 +53,13 @@ git push -u origin main
 
 Then deploy:
 
-1. In Render, choose **New → Blueprint** and connect the repository containing `render.yaml`.
+1. In Render, choose **New → Blueprint** and connect the repository containing `render.yaml`. See the [Render Blueprint guide](https://render.com/docs/infrastructure-as-code).
 2. Review the proposed web service and database, then apply the Blueprint.
 3. Render supplies `DATABASE_URL` and generates `SECRET_KEY` from the Blueprint. `COOKIE_SECURE=true` is configured for HTTPS.
-4. Open the resulting public service URL. Check `/health`, create a test account, add an expense, review `/api/summary`, download a CSV, and test sign out/sign in.
-5. Record the actual GitHub and public URLs in the final report. Do not submit placeholder links.
+4. Open the public service URL and check `/health` and `/demo`. Create a test account, import the sample CSV, and compare the dashboard totals with `/api/summary?month=2026-10`.
+5. Add the verified public URL to the project README and your resume.
 
-Render's free PostgreSQL database is time limited; review [Render's current free tier limits](https://render.com/docs/free) before relying on it for a long-lived deployment. Do not enter real bank details or other sensitive financial information into a class demonstration.
+Render's free PostgreSQL database expires 30 days after creation. The project's Blueprint uses that plan for a short demo. See [Render's free tier limits](https://render.com/docs/free).
 
 ## CSV format
 
@@ -70,7 +76,7 @@ Example:
 2026-09-11,expense,Lunch,Food,12.50
 ```
 
-For a demo, import `sample_transactions.csv` after creating an account.
+After creating a test account, import `sample_transactions.csv` or the file downloaded from the demo dashboard.
 
 Dates use `YYYY-MM-DD`; types are `income` or `expense`. Income uses the `Income` category. Expense categories are Food, Housing, Transportation, School, Entertainment, Health, and Other. Import accepts up to 500 rows and a maximum request size of 1 MB. An invalid row cancels the whole import. Export escapes text that a spreadsheet could interpret as a formula.
 
@@ -96,4 +102,4 @@ Dates use `YYYY-MM-DD`; types are `income` or `expense`. Income uses the `Income
 
 ## Project status
 
-The source and local tests are complete. A GitHub repository link, a successful Docker build on a Docker-enabled machine, and the final public deployment must be verified before the assignment's deployment requirements can be claimed as complete. The report keeps those fields open until verification.
+The app and automated tests run locally with SQLite. GitHub publication, the Docker image build, and the public Render URL are pending verification.

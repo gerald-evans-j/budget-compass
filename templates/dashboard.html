@@ -1,35 +1,62 @@
 {% extends "base.html" %}
-{% block title %}Dashboard · Budget Compass{% endblock %}
+{% block title %}{{ 'Demo dashboard' if demo else 'Dashboard' }} · Budget Compass{% endblock %}
 {% block content %}
-<div class="page-heading"><div><p class="eyebrow">YOUR MONEY, ORGANIZED</p><h1>Dashboard</h1><p class="muted">A simple place to track what comes in and goes out.</p></div><span class="account-label">{{ current_user.email }}</span></div>
+{% set view_endpoint = 'demo' if demo else 'dashboard' %}
+{% set csv_endpoint = 'export_demo_csv' if demo else 'export_csv' %}
+<div class="page-heading">
+  <h1>{{ 'Demo dashboard' if demo else 'Dashboard' }}</h1>
+  <span class="account-label">{{ 'Sample transactions' if demo else current_user.email }}</span>
+</div>
 <div class="layout">
   <div class="main-column">
     <section aria-labelledby="overview-heading">
       <div class="section-heading"><h2 id="overview-heading">Overview</h2><span class="muted">{{ month if month else 'All time' }}</span></div>
       <div class="stats">
-        <article class="stat"><span>Total income</span><strong>{{ summary.income_cents|money }}</strong><small>Money received</small></article>
-        <article class="stat"><span>Total expenses</span><strong>{{ summary.expenses_cents|money }}</strong><small>Money spent</small></article>
-        <article class="stat balance"><span>Balance</span><strong>{{ summary.balance_cents|money }}</strong><small>Income minus expenses</small></article>
+        <article class="stat"><span>Total income</span><strong>{{ summary.income_cents|money }}</strong></article>
+        <article class="stat"><span>Total expenses</span><strong>{{ summary.expenses_cents|money }}</strong></article>
+        <article class="stat balance"><span>Balance</span><strong>{{ summary.balance_cents|money }}</strong></article>
       </div>
     </section>
     <section class="panel" aria-labelledby="transactions-heading">
-      <div class="section-heading"><div><p class="eyebrow">HISTORY</p><h2 id="transactions-heading">Transactions</h2></div><a class="small-button" href="{{ url_for('export_csv', month=month) }}">Download CSV</a></div>
-      <form class="filter-form" method="get" action="{{ url_for('dashboard') }}">
-        <div><label for="month">Month</label><input id="month" type="month" name="month" value="{{ month }}"></div>
+      <div class="section-heading"><h2 id="transactions-heading">Transactions</h2><a class="small-button" href="{{ url_for(csv_endpoint, month=month) }}">Download CSV</a></div>
+      <form class="filter-form" method="get" action="{{ url_for(view_endpoint) }}">
+        <div><label for="month">Month</label><input id="month" type="month" name="month" value="{{ month }}" placeholder="YYYY-MM"></div>
         <div><label for="category">Category</label><select id="category" name="category"><option value="">All categories</option><option value="Income" {{ 'selected' if category == 'Income' }}>Income</option>{% for option in expense_categories %}<option value="{{ option }}" {{ 'selected' if category == option }}>{{ option }}</option>{% endfor %}</select></div>
         <div><label for="sort">Sort by</label><select id="sort" name="sort"><option value="newest" {{ 'selected' if sort == 'newest' }}>Newest</option><option value="oldest" {{ 'selected' if sort == 'oldest' }}>Oldest</option><option value="high" {{ 'selected' if sort == 'high' }}>Highest amount</option><option value="low" {{ 'selected' if sort == 'low' }}>Lowest amount</option></select></div>
         <button class="small-button" type="submit">Apply</button>
       </form>
       {% if transactions %}
-      <div class="table-scroll"><table><thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Amount</th><th>Actions</th></tr></thead><tbody>
-      {% for item in transactions %}<tr><td>{{ item.occurred_on.strftime('%b %d, %Y') }}</td><td><strong>{{ item.name }}</strong><span class="type-tag">{{ item.kind }}</span></td><td>{{ item.category }}</td><td class="amount {{ item.kind }}">{{ '+' if item.kind == 'income' else '−' }}{{ item.amount_cents|money }}</td><td class="row-actions"><a href="{{ url_for('edit_transaction', transaction_id=item.id) }}">Edit</a><form class="inline" action="{{ url_for('delete_transaction', transaction_id=item.id) }}" method="post" data-confirm="Delete this transaction?"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="link-button" type="submit">Delete</button></form></td></tr>{% endfor %}
-      </tbody></table></div>
-      {% else %}<div class="empty-state"><strong>No transactions in this view.</strong><p>Add one, or clear your filters to see the rest.</p></div>{% endif %}
+      <div class="table-scroll" tabindex="0" role="region" aria-label="Transaction list">
+        <table>
+          <thead><tr><th scope="col">Date</th><th scope="col">Description</th><th scope="col">Category</th><th scope="col">Amount</th>{% if not demo %}<th scope="col">Actions</th>{% endif %}</tr></thead>
+          <tbody>
+          {% for item in transactions %}
+            <tr>
+              <td>{{ item.occurred_on.strftime('%b %d, %Y') }}</td>
+              <td><strong>{{ item.name }}</strong><span class="type-tag">{{ item.kind }}</span></td>
+              <td>{{ item.category }}</td>
+              <td class="amount {{ item.kind }}">{{ '+' if item.kind == 'income' else '−' }}{{ item.amount_cents|money }}</td>
+              {% if not demo %}
+              <td class="row-actions">
+                <a href="{{ url_for('edit_transaction', transaction_id=item.id) }}">Edit</a>
+                <form class="inline" action="{{ url_for('delete_transaction', transaction_id=item.id) }}" method="post" data-confirm="Delete this transaction?">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <button class="link-button" type="submit">Delete</button>
+                </form>
+              </td>
+              {% endif %}
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}<div class="empty-state"><strong>No transactions in this view.</strong><p>{{ 'Clear the month or category filter to see more sample transactions.' if demo else 'Add one, or clear your filters to see the rest.' }}</p></div>{% endif %}
     </section>
   </div>
   <aside class="side-column">
+    {% if not demo %}
     <section class="panel" aria-labelledby="add-heading">
-      <p class="eyebrow">QUICK ENTRY</p><h2 id="add-heading">Add transaction</h2>
+      <h2 id="add-heading">Add transaction</h2>
       <form class="stacked-form" action="{{ url_for('create_transaction') }}" method="post">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <label for="type">Type</label><select id="type" name="type" data-kind-select><option value="expense">Expense</option><option value="income">Income</option></select>
@@ -40,12 +67,26 @@
         <button class="button" type="submit">Add transaction</button>
       </form>
     </section>
-    <section class="panel breakdown" aria-labelledby="breakdown-heading"><p class="eyebrow">SPENDING</p><h2 id="breakdown-heading">By category</h2>
-      {% if summary.by_category_cents %}{% for name, cents in summary.by_category_cents.items() %}<div class="breakdown-item"><div><span>{{ name }}</span><strong>{{ cents|money }}</strong></div><div class="bar"><span style="width: {{ (cents / summary.expenses_cents * 100)|round(1) }}%"></span></div></div>{% endfor %}{% else %}<p class="muted">Your category breakdown will show here after you add an expense.</p>{% endif %}
+    {% endif %}
+    <section class="panel breakdown" aria-labelledby="breakdown-heading"><h2 id="breakdown-heading">Spending by category</h2>
+      {% if summary.by_category_cents %}{% for name, cents in summary.by_category_cents.items() %}<div class="breakdown-item"><div><span>{{ name }}</span><strong>{{ cents|money }}</strong></div><div class="bar" aria-hidden="true"><span style="width: {{ (cents / summary.expenses_cents * 100)|round(1) }}%"></span></div></div>{% endfor %}{% else %}<p class="muted">No expenses in this period.</p>{% endif %}
     </section>
-    <section class="panel" aria-labelledby="import-heading"><p class="eyebrow">MOVE YOUR DATA</p><h2 id="import-heading">Import CSV</h2><p class="muted">Use columns: date, type, name, category, amount. Import up to 500 rows (1 MB) per file.</p>
+    {% if demo %}
+    <section class="panel" aria-labelledby="try-heading">
+      <h2 id="try-heading">Try importing a budget</h2>
+      <p class="muted">Download the sample CSV, then import it from your dashboard.</p>
+      {% if current_user %}
+      <a class="button" href="{{ url_for('dashboard') }}">Open your dashboard</a>
+      {% else %}
+      <a class="button" href="{{ url_for('register') }}">Create an account</a>
+      {% endif %}
+    </section>
+    {% else %}
+    <section class="panel" aria-labelledby="import-heading"><h2 id="import-heading">Import CSV</h2><p class="muted">Include the date, type, name, category, and amount columns. Import up to 500 rows (1 MB) per file.</p>
       <form class="stacked-form" action="{{ url_for('import_csv') }}" method="post" enctype="multipart/form-data"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label for="file">CSV file</label><input id="file" name="file" type="file" accept=".csv,text/csv" required><button class="small-button" type="submit">Import file</button></form>
+      <p class="muted"><a class="text-link" href="{{ url_for('export_demo_csv') }}">Download a sample CSV</a></p>
     </section>
+    {% endif %}
   </aside>
 </div>
 {% endblock %}

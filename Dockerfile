@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
     && useradd --create-home --uid 10001 appuser \
     && mkdir -p /app/instance \
     && chown appuser:appuser /app/instance
-COPY --chown=appuser:appuser app.py wsgi.py ./
+COPY --chown=appuser:appuser app.py wsgi.py sample_transactions.csv ./
 COPY --chown=appuser:appuser templates ./templates
 COPY --chown=appuser:appuser static ./static
 USER appuser
