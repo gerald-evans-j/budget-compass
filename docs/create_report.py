@@ -174,7 +174,7 @@ def build(destination):
 
     # Page 4: evidence, reflection, delivery
     story += section("08 / implementation and test", "What is complete")
-    story.append(p("The repository contains the Flask application, responsive templates, database models, CSV import/export, tests, Dockerfile, Render Blueprint, and README. Three local Git commits separate the implementation, test/deployment setup, and documentation. The initial automated run passed 6 of 6 functional tests."))
+    story.append(p("The repository contains the Flask application, responsive templates, database models, CSV import/export, tests, Dockerfile, Render Blueprint, and README. Local Git commits separate implementation, test/deployment setup, and documentation. The automated run passed 6 of 6 functional tests; a local Gunicorn smoke check returned HTTP 200 for the landing page and /health."))
     story.append(table([
         ("Check", "Result"),
         ("Local functional tests", "6 passed: account flow, calculations, edits, filters, CSV, privacy, validation, CSRF, health."),

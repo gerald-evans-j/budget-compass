@@ -63,6 +63,8 @@ Example:
 2026-09-11,expense,Lunch,Food,12.50
 ```
 
+For a demo, import `sample_transactions.csv` after creating an account.
+
 Dates use `YYYY-MM-DD`; types are `income` or `expense`. Income uses the `Income` category. Expense categories are Food, Housing, Transportation, School, Entertainment, Health, and Other. Import accepts up to 500 rows and a maximum request size of 1 MB. An invalid row cancels the whole import. Export escapes text that a spreadsheet could interpret as a formula.
 
 ## Project files
