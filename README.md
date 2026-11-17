@@ -38,7 +38,14 @@ Open http://localhost:8000. The named volume keeps local SQLite data between con
 
 ## Deploy to Render
 
-The repository includes `render.yaml`, which describes a Docker web service and a PostgreSQL database. After pushing this source to your own GitHub repository:
+The repository includes `render.yaml`, which describes a Docker web service and a PostgreSQL database. Create an empty dedicated GitHub repository named `budget-compass` (do not initialize it with a README), then push this project's existing commits:
+
+```bash
+git remote add origin https://github.com/gerald-evans-j/budget-compass.git
+git push -u origin main
+```
+
+Then deploy:
 
 1. In Render, choose **New → Blueprint** and connect the repository containing `render.yaml`.
 2. Review the proposed web service and database, then apply the Blueprint.

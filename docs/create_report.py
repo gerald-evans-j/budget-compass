@@ -179,7 +179,7 @@ def build(destination):
         ("Check", "Result"),
         ("Local functional tests", "6 passed: account flow, calculations, edits, filters, CSV, privacy, validation, CSRF, health."),
         ("Docker image build and run", "Pending a machine with Docker; image not yet verified."),
-        ("GitHub repository", "Pending connection/publication. Add the actual link after pushing."),
+        ("GitHub repository", "Pending creation of a dedicated project repository. Add its verified link after pushing."),
         ("Cloud deploy and public URL", "Pending Render deployment and end-to-end browser check."),
     ], [185, 331]))
     story += section("09 / challenges and lessons", "Engineering decisions")
