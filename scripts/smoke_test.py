@@ -42,7 +42,7 @@ def main(base_url):
         try:
             assert json.loads(get("/health")) == {"status": "ok"}
             break
-        except (urllib.error.URLError, TimeoutError):
+        except (urllib.error.URLError, OSError):
             if attempt == 29:
                 raise
             time.sleep(1)
