@@ -2,6 +2,9 @@ import io
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
+
+from flask import Flask
 
 from app import Transaction, User, create_app, db
 
@@ -151,6 +154,188 @@ class BudgetCompassTests(unittest.TestCase):
         totals = self.client.get("/api/summary?month=2026-10").json
         self.assertEqual(totals["balance_cents"], 56047)
         self.assertIn(b"Campus paycheck", self.client.get("/transactions/export.csv?month=2026-10").data)
+
+    def test_non_ascii_or_wrong_csrf_tokens_return_400(self):
+        self.register_and_login()
+        for token in ("wrong-token", "\u2717", "\u00e9", ""):
+            with self.subTest(token=token):
+                result = self.client.post("/transactions", data={"csrf_token": token})
+                self.assertEqual(result.status_code, 400)
+        self.assertEqual(self.client.get("/api/summary").json["expenses_cents"], 0)
+
+    def test_dates_require_documented_format_and_real_calendar_days(self):
+        self.register_and_login()
+        for value in ("20261123", "2026-W48-1", "2026-02-30", "2026-2-03", "0000-01-01"):
+            with self.subTest(date=value):
+                result = self.add(occurred=value)
+                self.assertIn(b"Enter a valid date in YYYY-MM-DD format", result.data)
+        self.assertEqual(self.client.get("/api/summary").json["expenses_cents"], 0)
+        self.add(occurred="2028-02-29")
+        self.assertEqual(self.client.get("/api/summary?month=2028-02").json["expenses_cents"], 1250)
+
+    def test_duplicate_account_and_invalid_login_do_not_grant_access(self):
+        self.register_and_login()
+        self.client.post("/logout", data={"csrf_token": self.token()})
+        self.client.get("/register")
+        duplicate = self.client.post("/register", data={"csrf_token": self.token(),
+            "email": "STUDENT@example.edu", "password": "another secure password"}, follow_redirects=True)
+        self.assertIn(b"An account already uses", duplicate.data)
+        bad_login = self.client.post("/login", data={"csrf_token": self.token(),
+            "email": "student@example.edu", "password": "wrong password"}, follow_redirects=True)
+        self.assertIn(b"Email or password was incorrect", bad_login.data)
+        self.assertEqual(self.client.get("/api/summary").status_code, 401)
+        with self.app.app_context():
+            self.assertEqual(db.session.query(User).count(), 1)
+
+    def test_registration_rejects_invalid_email_and_password_length(self):
+        self.client.get("/register")
+        for email, password in (("invalid", "a secure password"),
+                                ("student@example.edu", "short"),
+                                ("student@example.edu", "p" * 129)):
+            with self.subTest(email=email, length=len(password)):
+                self.client.post("/register", data={"csrf_token": self.token(),
+                    "email": email, "password": password})
+        with self.app.app_context():
+            self.assertEqual(db.session.query(User).count(), 0)
+
+    def test_decimal_arithmetic_and_negative_balance_are_exact(self):
+        self.register_and_login()
+        self.add(kind="income", category="Income", amount="0.30")
+        self.add(amount="0.10")
+        self.add(amount="0.20")
+        self.assertEqual(self.client.get("/api/summary").json["balance_cents"], 0)
+        self.add(amount="1.01")
+        self.assertEqual(self.client.get("/api/summary").json["balance_cents"], -101)
+
+    def test_december_filter_excludes_january_and_other_months(self):
+        self.register_and_login()
+        self.add(name="December", amount="10.00", occurred="2026-12-31")
+        self.add(name="January", amount="20.00", occurred="2027-01-01")
+        self.assertEqual(self.client.get("/api/summary?month=2026-12").json["expenses_cents"], 1000)
+        self.assertEqual(self.client.get("/api/summary?month=2027-01").json["expenses_cents"], 2000)
+        self.assertEqual(self.client.get("/api/summary").json["expenses_cents"], 3000)
+        for month in ("0000-01", "9999-12", "2026-13", "2026-1"):
+            with self.subTest(month=month):
+                self.assertEqual(self.client.get("/api/summary?month=" + month).status_code, 400)
+
+    def test_sort_and_category_filter_preserve_monthly_overview(self):
+        self.register_and_login()
+        self.add(name="Small lunch", amount="2.00")
+        self.add(name="Large lunch", amount="20.00")
+        self.add(name="Book", amount="50.00", category="School")
+        high = self.client.get("/dashboard?category=Food&sort=high").data
+        low = self.client.get("/dashboard?category=Food&sort=low").data
+        self.assertLess(high.index(b"Large lunch"), high.index(b"Small lunch"))
+        self.assertLess(low.index(b"Small lunch"), low.index(b"Large lunch"))
+        self.assertNotIn(b"<strong>Book</strong>", high)
+        self.assertIn(b"$72.00", high)
+
+    def test_cross_account_edit_post_is_rejected_and_owner_data_unchanged(self):
+        self.register_and_login("owner@example.edu")
+        self.add()
+        with self.app.app_context():
+            item_id = db.session.execute(db.select(Transaction)).scalar_one().id
+        self.client.post("/logout", data={"csrf_token": self.token()})
+        self.register_and_login("other@example.edu")
+        result = self.client.post(f"/transactions/{item_id}/edit", data={
+            "csrf_token": self.token(), "type": "expense", "name": "Changed",
+            "amount": "99.00", "category": "Food", "date": "2026-09-05"})
+        self.assertEqual(result.status_code, 404)
+        with self.app.app_context():
+            item = db.session.get(Transaction, item_id)
+            self.assertEqual((item.name, item.amount_cents), ("Lunch", 1250))
+
+    def test_invalid_edit_does_not_change_saved_transaction(self):
+        self.register_and_login()
+        self.add()
+        with self.app.app_context():
+            item_id = db.session.execute(db.select(Transaction)).scalar_one().id
+        response = self.client.post(f"/transactions/{item_id}/edit", data={
+            "csrf_token": self.token(), "type": "expense", "name": "Lunch",
+            "amount": "-9.00", "category": "Food", "date": "2026-09-05"})
+        self.assertIn(b"Amount must be greater than zero", response.data)
+        self.assertEqual(self.client.get("/api/summary").json["expenses_cents"], 1250)
+
+    def import_file(self, contents, filename="budget.csv"):
+        with io.BytesIO(contents) as upload:
+            result = self.client.post("/transactions/import", data={"csrf_token": self.token(),
+                "file": (upload, filename)}, content_type="multipart/form-data", follow_redirects=True)
+        result.request.input_stream.close()
+        return result
+
+    def test_csv_rejects_bad_headers_encoding_and_extra_columns(self):
+        self.register_and_login()
+        for contents in (b"name,amount\nLunch,12.50\n", b"\xff\xfeinvalid",
+                         b"date,type,name,category,amount\n2026-09-05,expense,Lunch,Food,12.50,extra\n",
+                         b"date,type,name,category,amount\n"):
+            with self.subTest(contents=contents):
+                self.assertIn(b"Import failed", self.import_file(contents).data)
+        self.assertEqual(self.client.get("/api/summary").json["expenses_cents"], 0)
+
+    def test_csv_row_limit_is_atomic(self):
+        self.register_and_login()
+        header = b"date,type,name,category,amount\n"
+        row = b"2026-09-05,expense,Lunch,Food,1.00\n"
+        self.assertIn(b"Import at most 500 rows", self.import_file(header + row * 501).data)
+        self.assertEqual(self.client.get("/api/summary").json["expenses_cents"], 0)
+        self.assertIn(b"Imported 500 transactions", self.import_file(header + row * 500).data)
+        self.assertEqual(self.client.get("/api/summary").json["expenses_cents"], 50000)
+
+    def test_large_csv_returns_413_without_changing_data(self):
+        self.register_and_login()
+        result = self.import_file(b"x" * (1024 * 1024 + 1))
+        self.assertEqual(result.status_code, 413)
+        self.assertEqual(self.client.get("/api/summary").json["expenses_cents"], 0)
+
+    def test_html_in_description_is_escaped_in_dashboard_and_edit_form(self):
+        self.register_and_login()
+        self.add(name="<script>alert(1)</script>")
+        page = self.client.get("/dashboard").data
+        self.assertIn(b"&lt;script&gt;alert(1)&lt;/script&gt;", page)
+        self.assertNotIn(b"<script>alert(1)</script>", page)
+        with self.app.app_context():
+            item_id = db.session.execute(db.select(Transaction)).scalar_one().id
+        self.assertNotIn(b"<script>alert(1)</script>",
+                         self.client.get(f"/transactions/{item_id}/edit").data)
+
+    def test_signed_out_routes_protect_private_data(self):
+        self.register_and_login()
+        self.add(name="Private purchase")
+        self.client.post("/logout", data={"csrf_token": self.token()})
+        for path in ("/dashboard", "/transactions/export.csv", "/transactions/1/edit"):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, 302)
+                self.assertNotIn(b"Private purchase", response.data)
+        self.assertEqual(self.client.get("/api/summary").status_code, 401)
+
+    def test_saved_data_survives_a_new_app_instance(self):
+        self.register_and_login()
+        self.add()
+        second = create_app({"TESTING": True, "SECRET_KEY": "test-only-key",
+            "SQLALCHEMY_DATABASE_URI": self.app.config["SQLALCHEMY_DATABASE_URI"]})
+        try:
+            with second.app_context():
+                item = db.session.execute(db.select(Transaction)).scalar_one()
+                self.assertEqual((item.name, item.amount_cents), ("Lunch", 1250))
+        finally:
+            with second.app_context():
+                db.session.remove()
+                db.engine.dispose()
+
+    def test_fresh_install_creates_default_sqlite_folder(self):
+        instance_dir = os.path.join(self.tempdir.name, "fresh", "instance")
+        flask_app = Flask("app", instance_path=instance_dir)
+        with patch("app.Flask", return_value=flask_app):
+            second = create_app({"TESTING": True, "SECRET_KEY": "test-only-key",
+                "SQLALCHEMY_DATABASE_URI": "sqlite:///budget.db"})
+        try:
+            self.assertTrue(os.path.isfile(os.path.join(instance_dir, "budget.db")))
+            self.assertEqual(second.test_client().get("/health").json, {"status": "ok"})
+        finally:
+            with second.app_context():
+                db.session.remove()
+                db.engine.dispose()
 
 
 if __name__ == "__main__":
