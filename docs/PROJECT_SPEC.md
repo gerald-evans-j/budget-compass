@@ -77,6 +77,7 @@ erDiagram
 | Method and path | Purpose | Access |
 | --- | --- | --- |
 | `GET /` | Landing page | Public |
+| `GET /demo`, `/demo/export.csv` | Sample-only dashboard and CSV | Public |
 | `GET/POST /register`, `/login` | Account registration and sign in | Public |
 | `POST /logout` | Sign out | Signed in, CSRF |
 | `GET /dashboard` | List, filter, sort, totals, category view | Signed in |
@@ -92,19 +93,20 @@ Example JSON: `{"month":"2026-09","income_cents":20000,"expenses_cents":1250,"ba
 
 ## 6. Implementation, testing, and deployment evidence
 
-- Source: Flask app, responsive templates, SQLAlchemy models, Dockerfile, Render Blueprint, and README are included.
-- Automated tests: `python -m unittest discover -s tests -v` covers the eight stories through six functional test cases. Record the final count from a fresh run before submission.
-- Version control: commits record initial app implementation and later documentation and fixes. Push to a student-owned GitHub repository and add its real URL below.
-- Docker build: run `docker build -t budget-compass .` on a machine with Docker and record the result. Run the image with a volume and test `/health`.
-- Public deployment: deploy the Blueprint to Render, use PostgreSQL, open the public URL, and test a real account and transaction end to end.
+- **Repository:** https://github.com/gerald-evans-j/budget-compass
+- **Completed work branch:** `codex/complete-individual-project`; review: https://github.com/gerald-evans-j/budget-compass/pull/1
+- **Automated tests:** 24 functional tests pass locally and in GitHub Actions.
+- **HTTP workflow:** Registration/login, health, public demo, create, exact totals, export, edit, delete, and logout pass against Gunicorn.
+- **Docker:** Image build, HTTP workflow with a named volume, and non-root UID 10001 check pass.
+- **PostgreSQL:** Same HTTP workflow passes with PostgreSQL 16 in CI.
+- **Hosted evidence:** https://github.com/gerald-evans-j/budget-compass/actions/runs/45291728508
+- **Public product URL:** Awaiting Render sign-in, deployment, and verification. A public deployment is not yet claimed.
 
-**GitHub URL:** Pending creation and verification.  
-**Public product URL:** Pending deployment and verification.  
-**Docker build and deployed smoke test:** Pending Docker/cloud access.
+`docs/verification.json` records the observed results. The report generator reads this record. Update its actual URL and verified status only after opening and testing the deployed service. See the README for local setup, Docker, and Render instructions, and `docs/DEMO_GUIDE.md` for evaluation preparation.
 
 ## 7. Challenges and lessons learned
 
-The prior static budget prototype held the interface concept but did not provide account-level database storage. Moving the data to a server required authentication and ownership checks on every entry. Storing money as integer cents avoided rounding errors. CSV import needed whole-file validation so a bad row could not leave a half-imported result. Keeping the cloud database separate from the container's filesystem matters because a redeploy can replace the container. The deployment and public test still need to be carried out before describing those steps as complete.
+The prior static budget prototype held the interface concept but did not provide account-level database storage. Moving the data to a server required authentication and ownership checks on every entry. Storing money as integer cents avoided rounding errors. CSV import needed whole-file validation so a bad row could not leave a half-imported result. Keeping the cloud database separate from the container's filesystem matters because a redeploy can replace the container. A fresh-start check exposed a missing SQLite instance directory; the factory now creates it, and a regression test covers that installation path. Invalid non-ASCII form tokens now return HTTP 400, and calendar-date input must match the documented format. Container startup checks retry transient connection errors while Gunicorn boots. The public deployment still requires sign-in and a verified live URL.
 
 ## 8. Ten-minute demo outline
 

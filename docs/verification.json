@@ -1,0 +1,15 @@
+{
+  "verified_on": "2026-11-23",
+  "functional_tests": 24,
+  "local_http_smoke": "passed",
+  "source_commit": "1298cb4507b000dfc0574b67b47f6b10a01d4e0e",
+  "ci": {
+    "run_id": 45291728508,
+    "run_url": "https://github.com/gerald-evans-j/budget-compass/actions/runs/45291728508",
+    "functional": "passed (24 tests)",
+    "postgres": "passed",
+    "docker": "passed"
+  },
+  "public_url": null,
+  "public_deployment_verified": false
+}

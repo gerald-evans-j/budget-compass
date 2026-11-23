@@ -7,3 +7,5 @@ instance/
 .DS_Store
 .coverage
 tmp/
+
+output/
