@@ -1,0 +1,110 @@
+name: Budget Compass checks
+
+on:
+  push:
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  functional-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m unittest discover -s tests -v
+
+  docker-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: docker build --tag budget-compass:ci .
+      - name: Start the container
+        run: |
+          docker volume create budget-compass-ci-data
+          docker run --detach --name budget-compass-ci \
+            --publish 127.0.0.1:8000:8000 \
+            --env SECRET_KEY=ci-only-never-use-in-production \
+            --volume budget-compass-ci-data:/app/instance budget-compass:ci
+      - run: python scripts/smoke_test.py http://127.0.0.1:8000
+      - name: Check non-root runtime
+        run: test "$(docker exec budget-compass-ci id -u)" = 10001
+      - name: Show container logs
+        if: always()
+        run: docker logs budget-compass-ci
+
+  postgres-smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: budget_compass_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d budget_compass_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Prepare unrelated tables to verify schema isolation
+        env:
+          DATABASE_URL: postgresql://postgres:ci-only-password@127.0.0.1:5432/budget_compass_test
+        run: |
+          python - <<'PY'
+          import os
+          import psycopg
+          with psycopg.connect(os.environ['DATABASE_URL']) as connection:
+              connection.execute('CREATE TABLE public."user" (sentinel text NOT NULL)')
+              connection.execute('INSERT INTO public."user" VALUES (%s)', ('existing-app-user',))
+              connection.execute('CREATE TABLE public."transaction" (sentinel text NOT NULL)')
+              connection.execute('INSERT INTO public."transaction" VALUES (%s)', ('existing-app-entry',))
+          PY
+      - name: Start with PostgreSQL
+        env:
+          DATABASE_URL: postgresql://postgres:ci-only-password@127.0.0.1:5432/budget_compass_test
+          SECRET_KEY: ci-only-never-use-in-production
+          DATABASE_SCHEMA: budget_compass
+        run: gunicorn --bind 127.0.0.1:8001 --workers 1 --daemon --error-logfile postgres-smoke.log wsgi:app
+      - run: python scripts/smoke_test.py http://127.0.0.1:8001
+      - name: Verify existing tables are unchanged
+        env:
+          DATABASE_URL: postgresql://postgres:ci-only-password@127.0.0.1:5432/budget_compass_test
+        run: |
+          python - <<'PY'
+          import os
+          import psycopg
+          with psycopg.connect(os.environ['DATABASE_URL']) as connection:
+              assert connection.execute('SELECT sentinel FROM public."user"').fetchall() == [('existing-app-user',)]
+              assert connection.execute('SELECT sentinel FROM public."transaction"').fetchall() == [('existing-app-entry',)]
+              assert connection.execute("SELECT to_regclass('budget_compass.user') IS NOT NULL").fetchone() == (True,)
+              assert connection.execute('SELECT count(*) FROM budget_compass."transaction"').fetchone() == (0,)
+          print('PASS: existing public tables unchanged; Budget Compass uses its own schema')
+          PY
+      - name: Show server logs
+        if: always()
+        run: cat postgres-smoke.log

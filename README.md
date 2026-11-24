@@ -1,69 +1,94 @@
 # Budget Compass
 
-An account-based budget tracker for students. Record income and expenses, review balances and category totals, filter and sort transactions, edit or delete entries, and import or export CSV files. Built with Flask, SQLAlchemy, SQLite for local development, and PostgreSQL for cloud deployment.
+An account-based student budget tracker built with HTML/CSS/JavaScript, Python/Flask, SQLAlchemy, SQLite, PostgreSQL, Docker, and Gunicorn.
 
-## Try the demo
+- [GitHub repository](https://github.com/gerald-evans-j/budget-compass)
+- [Completed work branch](https://github.com/gerald-evans-j/budget-compass/tree/codex/complete-individual-project)
+- [Review changes](https://github.com/gerald-evans-j/budget-compass/pull/1)
+- [Passing functional, Docker, and PostgreSQL checks](https://github.com/gerald-evans-j/budget-compass/actions/runs/45298910176)
+- **Public product URL:** https://budget-compass-u55y.onrender.com (deployed and verified).
 
-Choose **Try the demo** on the home page to explore September and October sample budgets without an account. October starts with $1,250.00 in income, $689.53 in expenses, and a $560.47 balance. Change the month or filter by category, then choose **Download CSV** to export that month.
+## Features and usage
 
-To try the full workflow, create a test account and import the downloaded CSV. The import panel also offers a sample file containing both months. Review the totals, edit a transaction, and export the updated budget.
+Choose **Try the demo** to explore fictional September and October transactions without an account. October contains $1,250.00 income, $689.53 expenses, and a $560.47 balance. The demo never displays a signed-in user's records.
 
-## Run locally
+Create an account, sign in, and add income or expenses using a description, category, amount, and date. Use **Edit** or **Delete** to correct entries. Filter by month, category, or amount/date order. The month controls the overview and list; category controls the list. **Download CSV** exports all your records in the chosen month, regardless of the category filter. **Import CSV** validates the entire file before saving.
 
-Requires Python 3.12 or newer.
+## Run locally on macOS or Linux
+
+Requires Python 3.12 or newer. Clone this repository, then enter its folder. The latest completed changes are on the review branch until merged:
 
 ```bash
+git clone https://github.com/gerald-evans-j/budget-compass.git
+cd budget-compass
+git switch codex/complete-individual-project
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-export SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
-flask --app wsgi run
+export SECRET_KEY="$(python -c 'import secrets; print(secrets.token_hex(32))')"
+python -m flask --app wsgi run --port 5050
 ```
 
-Visit http://127.0.0.1:5000, create an account, and add a transaction. Local data is created in `instance/budget.db`. Keep `SECRET_KEY` stable across restarts if you want existing sessions to remain signed in. On Windows, use `.venv\Scripts\activate` and `set SECRET_KEY=...` in Command Prompt or `$env:SECRET_KEY="..."` in PowerShell.
+If you downloaded the source ZIP, extract it and open the `budget-compass` folder, then start at the virtual-environment command. Visit http://127.0.0.1:5050. The app creates `instance/budget.db` on first startup. Port 5050 avoids the common macOS port 5000 conflict. Keep SECRET_KEY stable if you want sessions to survive restarts.
 
-## Automated tests
+## Run locally on Windows (PowerShell)
+
+Open the extracted project folder in PowerShell, then run:
+
+```powershell
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+$env:SECRET_KEY = python -c "import secrets; print(secrets.token_hex(32))"
+python -m flask --app wsgi run --port 5050
+```
+
+If activation is blocked, call `.venv\Scripts\python.exe` instead of `python` in these commands. You do not need to change your system execution policy. Visit http://127.0.0.1:5050.
+
+## Automated verification
 
 ```bash
 python -m unittest discover -s tests -v
 ```
 
-The tests use temporary SQLite databases. They cover sign-in, account isolation, transaction editing, monthly totals, filters, CSV validation and export, and the public demo's sample-only data.
+**26 functional tests pass**, including exact calculations, account separation, CSV validation, month boundaries, sorting, HTML escaping, malformed form tokens, strict dates, first-run storage, and persistence. GitHub Actions also builds/runs the Docker image, checks runtime UID 10001, and exercises the HTTP workflow using PostgreSQL 16. See the linked passing run above.
+
+To exercise a running local container or a deployed service:
+
+```bash
+python scripts/smoke_test.py http://127.0.0.1:8000
+```
+
+The smoke check creates one account with a randomized `example.test` address, adds fictional transactions, checks totals/export/edit/delete, removes those transactions, and signs out. An empty test account remains. Use it against a service you own.
 
 ## Docker
+
+With Docker Desktop running and SECRET_KEY set in your shell:
 
 ```bash
 docker build -t budget-compass .
 docker volume create budget-compass-data
-docker run --rm -p 8000:8000 \
-  -e SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_hex(32))')" \
-  -v budget-compass-data:/app/instance budget-compass
+docker run --rm -p 8000:8000 --env SECRET_KEY -v budget-compass-data:/app/instance budget-compass
 ```
 
-Open http://localhost:8000. The named volume keeps local SQLite data between container runs. The image runs Gunicorn as a non-root user and binds to the `PORT` environment variable, defaulting to 8000. For a public deployment, configure a persistent PostgreSQL `DATABASE_URL` and a strong `SECRET_KEY`.
+Visit http://localhost:8000. The named volume preserves SQLite data between container runs. The image uses Python 3.12, runs Gunicorn as non-root UID 10001, and binds to PORT (default 8000). It was built and exercised successfully in GitHub Actions. For public cloud storage, supply a PostgreSQL DATABASE_URL rather than relying on a temporary web-service filesystem.
 
 ## Deploy to Render
 
-The repository includes `render.yaml`, which defines a Docker web service and a PostgreSQL database. For the first publication from the source ZIP, open the extracted `budget-compass` directory and push the included commit history to the dedicated GitHub repo.
+`render.yaml` defines a Docker web service and a PostgreSQL database on free plans. The app is deployed at https://budget-compass-u55y.onrender.com using its own budget-compass-db PostgreSQL database. The initial database-quota blocker was resolved before the successful deployment.
 
-```bash
-git remote add origin https://github.com/gerald-evans-j/budget-compass.git
-git push -u origin main
-```
+1. Sign in at https://dashboard.render.com and choose **New > Blueprint**.
+2. Connect `gerald-evans-j/budget-compass`. Select `codex/complete-individual-project` to deploy this version, or select `main` after merging the review branch.
+3. Keep the Blueprint path `render.yaml`. Review both proposed resources and confirm that their plans are free. If your workspace already has its permitted free PostgreSQL database, do not delete that database or upgrade a plan automatically; use a suitable existing database or decide on an alternative.
+4. Deploy. The Blueprint generates SECRET_KEY, sets COOKIE_SECURE=true, and injects the PostgreSQL connection as DATABASE_URL.
+5. Open the actual URL assigned by Render. Check `/health`, `/demo`, registration, sign-in, add/edit/delete, CSV import/export, and `/api/summary?month=2026-10`.
+6. Record the real URL and the observed result in `docs/verification.json`; regenerate the report. Do not mark `public_deployment_verified` true until the public app has been checked.
 
-Then deploy:
-
-1. In Render, choose **New → Blueprint** and connect the repository containing `render.yaml`. See the [Render Blueprint guide](https://render.com/docs/infrastructure-as-code).
-2. Review the proposed web service and database, then apply the Blueprint.
-3. Render supplies `DATABASE_URL` and generates `SECRET_KEY` from the Blueprint. `COOKIE_SECURE=true` is configured for HTTPS.
-4. Open the public service URL and check `/health` and `/demo`. Create a test account, import the sample CSV, and compare the dashboard totals with `/api/summary?month=2026-10`.
-5. Add the verified public URL to the project README and your resume.
-
-Render's free PostgreSQL database expires 30 days after creation. The project's Blueprint uses that plan for a short demo. See [Render's free tier limits](https://render.com/docs/free).
+Render documents that free web services can spin down and free PostgreSQL databases expire after 30 days. Confirm availability for the evaluation date. See [Docker hosting](https://render.com/docs/docker), [Blueprints](https://render.com/docs/infrastructure-as-code), and [free-tier limits](https://render.com/docs/free).
 
 ## CSV format
 
-The first line must be exactly:
+Headers must be exactly:
 
 ```csv
 date,type,name,category,amount
@@ -72,34 +97,42 @@ date,type,name,category,amount
 Example:
 
 ```csv
-2026-09-10,income,Campus job,Income,200.00
-2026-09-11,expense,Lunch,Food,12.50
+2026-11-23,income,Campus work,Income,250.00
+2026-11-23,expense,Lunch,Food,12.50
 ```
 
-After creating a test account, import `sample_transactions.csv` or the file downloaded from the demo dashboard.
+Use a real date in `YYYY-MM-DD` format. Types are `income` or `expense`. Income uses the `Income` category. Expense categories: Food, Housing, Transportation, School, Entertainment, Health, Other. Amounts must be positive, at most 9,999,999.99, and use no more than two decimal places.
 
-Dates use `YYYY-MM-DD`; types are `income` or `expense`. Income uses the `Income` category. Expense categories are Food, Housing, Transportation, School, Entertainment, Health, and Other. Import accepts up to 500 rows and a maximum request size of 1 MB. An invalid row cancels the whole import. Export escapes text that a spreadsheet could interpret as a formula.
+Import accepts UTF-8 (with or without BOM), up to 500 rows, and a maximum request size of 1 MB. Any invalid row cancels the whole import. Export prefixes spreadsheet formula markers with an apostrophe; these names remain text when opened in a spreadsheet. `sample_transactions.csv` contains both sample months. Importing the same file twice creates duplicate transactions; automatic deduplication is outside this version.
 
-## Project files
-
-- `app.py`: application factory, validation, authentication, routes, and data models.
-- `templates/`, `static/`: responsive user interface.
-- `tests/test_app.py`: functional automated tests.
-- `docs/PROJECT_SPEC.md`: vision, persona, scenarios, stories, architecture, and demo plan.
-- `docs/Budget_Compass_Project_Report.pdf`: report draft with verified local results and clearly marked deployment fields. Regenerate it with `python docs/create_report.py docs/Budget_Compass_Project_Report.pdf` after installing `reportlab` if the live links are added to the script.
-- `Dockerfile`, `render.yaml`: container and cloud configuration.
-
-## Configuration and endpoints
+## Configuration
 
 | Setting | Purpose |
 | --- | --- |
-| `SECRET_KEY` | Required; protects sessions and form tokens. |
-| `DATABASE_URL` | Optional locally (defaults to SQLite); required for persistent cloud data. Accepts PostgreSQL URLs. |
-| `COOKIE_SECURE` | Set to `true` for HTTPS deployments. |
-| `PORT` | Gunicorn listening port inside the container; defaults to 8000. |
+| SECRET_KEY | Required; protects signed sessions and form tokens. Generated by the Render Blueprint. |
+| DATABASE_URL | Defaults to local SQLite; set a PostgreSQL connection for persistent cloud data. PostgreSQL URLs are normalized for psycopg 3. |
+| DATABASE_SCHEMA | Optional PostgreSQL schema name for logical table separation. A shared database still shares its connection account and capacity; approval is required before connecting a second app. |
+| COOKIE_SECURE | Set to `true` for HTTPS. Keep false/unset for local HTTP. |
+| PORT | Gunicorn listening port in Docker; defaults to 8000. |
 
-`GET /health` reports the database is reachable. Authenticated `GET /api/summary?month=YYYY-MM` returns income, expenses, balance, and expense totals by category in integer cents. See `docs/PROJECT_SPEC.md` for the full route and data design.
+`GET /health` checks database access. Authenticated `GET /api/summary?month=YYYY-MM` returns income, expenses, balance, and category totals as integer cents. Signed-out calls return HTTP 401; invalid months return 400. Private transaction paths enforce ownership and POST changes require a valid CSRF form token.
 
-## Project status
+## Assignment documentation
 
-The app and automated tests run locally with SQLite. GitHub publication, the Docker image build, and the public Render URL are pending verification.
+- `docs/PROJECT_SPEC.md`: opportunity, Moore vision, persona, three scenarios, eight stories, architecture, schema, and routes.
+- `docs/DEMO_GUIDE.md`: ten-minute walkthrough and expected sample totals.
+- `docs/verification.json`: observed test results and deployment status.
+- `docs/create_report.py`: creates the assignment report PDF. Install `reportlab`, then run `python docs/create_report.py`. Output goes to `output/pdf/Budget_Compass_Project_Report.pdf`.
+- `tests/test_app.py`: 26 functional tests.
+- `scripts/smoke_test.py`: HTTP checks for a running service.
+- `.github/workflows/ci.yml`: functional, Docker, and PostgreSQL checks.
+
+The separate PDF report includes the required introduction, links/status, opportunity, product vision, persona, scenarios, user stories, architecture/data/API design, challenges, and lessons learned. It includes the verified public URL and observed deployment checks.
+
+## Current limitations
+
+This version uses manual entries, a single currency, and account-specific data. Password recovery, email verification, sign-in rate limiting, database migrations, pagination, bank integration, and automatic CSV deduplication are future work. Public evaluation should use the prepared sample data.
+
+An optional schema setting is implemented and tested with unrelated public-schema tables. This deployment uses its own budget-compass-db database.
+
+The final submission report is supplied separately. The PDF retained in this Git repository is an earlier draft; use the separately delivered final PDF for grading.

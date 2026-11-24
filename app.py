@@ -19,6 +19,7 @@ from flask import (
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.schema import CreateSchema
 from werkzeug.security import check_password_hash, generate_password_hash
 
 
@@ -73,13 +74,14 @@ def parse_transaction(fields):
             raise ValueError("Amount must be greater than zero and at most 9,999,999.99.")
         if amount != amount.quantize(Decimal("0.01")):
             raise ValueError("Use no more than two decimal places for the amount.")
-        occurred_on = date.fromisoformat(raw_date)
     except (InvalidOperation, TypeError):
         raise ValueError("Enter a valid amount.") from None
-    except ValueError as exc:
-        if "isoformat" in str(exc) or "Invalid" in str(exc):
-            raise ValueError("Enter a valid date in YYYY-MM-DD format.") from None
-        raise
+    if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", raw_date):
+        raise ValueError("Enter a valid date in YYYY-MM-DD format.")
+    try:
+        occurred_on = date.fromisoformat(raw_date)
+    except ValueError:
+        raise ValueError("Enter a valid date in YYYY-MM-DD format.") from None
     return dict(kind=kind, name=name, category=category,
                 amount_cents=int(amount * 100), occurred_on=occurred_on)
 
@@ -167,6 +169,7 @@ def create_app(test_config=None):
         SECRET_KEY=os.environ.get("SECRET_KEY"),
         SQLALCHEMY_DATABASE_URI=database_url,
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
+        SQLALCHEMY_ENGINE_OPTIONS={"pool_pre_ping": True},
         MAX_CONTENT_LENGTH=1024 * 1024,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
@@ -176,6 +179,18 @@ def create_app(test_config=None):
         app.config.update(test_config)
     if not app.config["SECRET_KEY"]:
         raise RuntimeError("Set SECRET_KEY to a long random value before starting the app.")
+    database_schema = os.environ.get("DATABASE_SCHEMA", "")
+    if database_schema:
+        if not re.fullmatch(r"[a-z_][a-z0-9_]{0,62}", database_schema):
+            raise RuntimeError("DATABASE_SCHEMA must be a lowercase PostgreSQL schema name.")
+        if not str(app.config["SQLALCHEMY_DATABASE_URI"]).startswith("postgresql"):
+            raise RuntimeError("DATABASE_SCHEMA requires a PostgreSQL database.")
+        engine_options = dict(app.config["SQLALCHEMY_ENGINE_OPTIONS"])
+        execution_options = dict(engine_options.get("execution_options", {}))
+        execution_options["schema_translate_map"] = {None: database_schema}
+        engine_options["execution_options"] = execution_options
+        app.config["SQLALCHEMY_ENGINE_OPTIONS"] = engine_options
+    Path(app.instance_path).mkdir(parents=True, exist_ok=True)
     db.init_app(app)
 
     @app.before_request
@@ -185,7 +200,7 @@ def create_app(test_config=None):
         if request.method == "POST":
             expected = session.get("csrf_token", "")
             supplied = request.form.get("csrf_token", "")
-            if not expected or not hmac.compare_digest(expected, supplied):
+            if not expected or not hmac.compare_digest(expected.encode("utf-8"), supplied.encode("utf-8")):
                 abort(400, description="Form expired. Reload the page and try again.")
 
     @app.context_processor
@@ -425,5 +440,8 @@ def create_app(test_config=None):
         return render_template("error.html", message=getattr(error, "description", "Page not found.")), error.code
 
     with app.app_context():
+        if database_schema:
+            with db.engine.begin() as connection:
+                connection.execute(CreateSchema(database_schema, if_not_exists=True))
         db.create_all()
     return app
