@@ -337,6 +337,19 @@ class BudgetCompassTests(unittest.TestCase):
                 db.session.remove()
                 db.engine.dispose()
 
+    def test_sqlite_rejects_postgres_schema_configuration(self):
+        with patch.dict(os.environ, {"DATABASE_SCHEMA": "budget_compass"}):
+            with self.assertRaisesRegex(RuntimeError, "requires a PostgreSQL"):
+                create_app({"TESTING": True, "SECRET_KEY": "test-only-key",
+                    "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:"})
+
+    def test_invalid_schema_names_are_rejected_before_database_access(self):
+        for name in ("public; DROP SCHEMA public", "a-b", "A", "x" * 64):
+            with self.subTest(schema=name), patch.dict(os.environ, {"DATABASE_SCHEMA": name}):
+                with self.assertRaisesRegex(RuntimeError, "lowercase PostgreSQL schema name"):
+                    create_app({"TESTING": True, "SECRET_KEY": "test-only-key",
+                        "SQLALCHEMY_DATABASE_URI": "postgresql+psycopg://unused:unused@127.0.0.1:1/unused"})
+
 
 if __name__ == "__main__":
     unittest.main()

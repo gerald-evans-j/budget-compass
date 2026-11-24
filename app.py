@@ -19,6 +19,7 @@ from flask import (
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.schema import CreateSchema
 from werkzeug.security import check_password_hash, generate_password_hash
 
 
@@ -178,6 +179,15 @@ def create_app(test_config=None):
         app.config.update(test_config)
     if not app.config["SECRET_KEY"]:
         raise RuntimeError("Set SECRET_KEY to a long random value before starting the app.")
+    database_schema = os.environ.get("DATABASE_SCHEMA", "")
+    if database_schema:
+        if not re.fullmatch(r"[a-z_][a-z0-9_]{0,62}", database_schema):
+            raise RuntimeError("DATABASE_SCHEMA must be a lowercase PostgreSQL schema name.")
+        if not str(app.config["SQLALCHEMY_DATABASE_URI"]).startswith("postgresql"):
+            raise RuntimeError("DATABASE_SCHEMA requires a PostgreSQL database.")
+        engine_options = dict(app.config["SQLALCHEMY_ENGINE_OPTIONS"])
+        engine_options["schema_translate_map"] = {None: database_schema}
+        app.config["SQLALCHEMY_ENGINE_OPTIONS"] = engine_options
     Path(app.instance_path).mkdir(parents=True, exist_ok=True)
     db.init_app(app)
 
@@ -428,5 +438,8 @@ def create_app(test_config=None):
         return render_template("error.html", message=getattr(error, "description", "Page not found.")), error.code
 
     with app.app_context():
+        if database_schema:
+            with db.engine.begin() as connection:
+                connection.execute(CreateSchema(database_schema, if_not_exists=True))
         db.create_all()
     return app
