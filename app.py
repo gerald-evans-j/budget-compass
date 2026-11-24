@@ -186,7 +186,9 @@ def create_app(test_config=None):
         if not str(app.config["SQLALCHEMY_DATABASE_URI"]).startswith("postgresql"):
             raise RuntimeError("DATABASE_SCHEMA requires a PostgreSQL database.")
         engine_options = dict(app.config["SQLALCHEMY_ENGINE_OPTIONS"])
-        engine_options["schema_translate_map"] = {None: database_schema}
+        execution_options = dict(engine_options.get("execution_options", {}))
+        execution_options["schema_translate_map"] = {None: database_schema}
+        engine_options["execution_options"] = execution_options
         app.config["SQLALCHEMY_ENGINE_OPTIONS"] = engine_options
     Path(app.instance_path).mkdir(parents=True, exist_ok=True)
     db.init_app(app)
