@@ -63,7 +63,7 @@
         <label for="name">Description</label><input id="name" name="name" maxlength="80" placeholder="e.g., Groceries" required>
         <label for="amount">Amount ($)</label><input id="amount" name="amount" type="number" inputmode="decimal" step="0.01" min="0.01" max="9999999.99" placeholder="0.00" required>
         <label for="entry-category">Category</label><select id="entry-category" name="category" data-category-select><option value="Income">Income</option>{% for option in expense_categories %}<option value="{{ option }}" {{ 'selected' if option == 'Food' }}>{{ option }}</option>{% endfor %}</select>
-        <label for="date">Date</label><input id="date" name="date" type="date" value="{{ today }}" required>
+        <label for="date">Date</label><input id="date" name="date" type="date" value="{{ today }}" data-local-today required>
         <button class="button" type="submit">Add transaction</button>
       </form>
     </section>

@@ -1,3 +1,10 @@
+const localToday = new Date();
+const localDate = [localToday.getFullYear(), String(localToday.getMonth() + 1).padStart(2, '0'),
+  String(localToday.getDate()).padStart(2, '0')].join('-');
+document.querySelectorAll('[data-local-today]').forEach((input) => {
+  input.value = localDate;
+});
+
 document.querySelectorAll('[data-confirm]').forEach((form) => {
   form.addEventListener('submit', (event) => {
     if (!window.confirm(form.dataset.confirm)) event.preventDefault();
